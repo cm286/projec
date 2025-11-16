@@ -1,0 +1,5 @@
+{
+  "name": "Store Management Backend DevTools",
+  "version": "1.0.0",
+  "description": "A tiny manifest to avoid 404 from DevTools while developing locally."
+}

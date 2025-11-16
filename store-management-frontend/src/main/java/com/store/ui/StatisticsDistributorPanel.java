@@ -1,0 +1,149 @@
+package com.store.ui;
+
+import com.store.models.*;
+import com.store.services.APIClient;
+
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import java.awt.*;
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * Panel Thống kê đại lý phụ
+ */
+public class StatisticsDistributorPanel extends JPanel {
+    private JSpinner startDateSpinner;
+    private JSpinner endDateSpinner;
+    private JButton searchButton;
+    private JTable statisticsTable;
+
+    public StatisticsDistributorPanel() {
+        initComponents();
+    }
+
+    private void initComponents() {
+        setLayout(new BorderLayout(10, 10));
+        setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        // Panel tìm kiếm theo thời gian
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        searchPanel.setBorder(BorderFactory.createTitledBorder("Chọn khoảng thời gian"));
+
+        searchPanel.add(new JLabel("Từ ngày:"));
+        startDateSpinner = new JSpinner(new SpinnerDateModel());
+        startDateSpinner.setEditor(new JSpinner.DateEditor(startDateSpinner, "yyyy-MM-dd"));
+        searchPanel.add(startDateSpinner);
+
+        searchPanel.add(new JLabel("Đến ngày:"));
+        endDateSpinner = new JSpinner(new SpinnerDateModel());
+        endDateSpinner.setEditor(new JSpinner.DateEditor(endDateSpinner, "yyyy-MM-dd"));
+        searchPanel.add(endDateSpinner);
+
+        searchButton = new JButton("Tìm kiếm");
+        searchButton.addActionListener(e -> performSearch());
+        searchPanel.add(searchButton);
+
+        add(searchPanel, BorderLayout.NORTH);
+
+        // Bảng thống kê
+        String[] columns = {"Mã đại lý", "Tên đại lý", "Tổng doanh thu"};
+        DefaultTableModel tableModel = new DefaultTableModel(columns, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        statisticsTable = new JTable(tableModel);
+        statisticsTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        statisticsTable.getSelectionModel().addListSelectionListener(e -> {
+            if (statisticsTable.getSelectedRow() != -1) {
+                showDistributorDetails();
+            }
+        });
+
+        JScrollPane scrollPane = new JScrollPane(statisticsTable);
+        add(scrollPane, BorderLayout.CENTER);
+    }
+
+    private void performSearch() {
+        java.util.Date startDate = (java.util.Date) startDateSpinner.getValue();
+        java.util.Date endDate = (java.util.Date) endDateSpinner.getValue();
+
+        String startDateStr = new java.text.SimpleDateFormat("yyyy-MM-dd").format(startDate);
+        String endDateStr = new java.text.SimpleDateFormat("yyyy-MM-dd").format(endDate);
+
+        try {
+            List<StatisticsDistributorData> dataList = APIClient.getDistributorStatistics(startDateStr, endDateStr);
+            updateTable(dataList);
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this, "Lỗi: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+        }
+    }
+
+    private void updateTable(List<StatisticsDistributorData> dataList) {
+        DefaultTableModel model = (DefaultTableModel) statisticsTable.getModel();
+        model.setRowCount(0);
+
+        for (StatisticsDistributorData data : dataList) {
+            model.addRow(new Object[]{
+                data.getDistributorCode(),
+                data.getDistributorName(),
+                String.format("%.2f VNĐ", data.getTotalRevenue())
+            });
+        }
+    }
+
+    private void showDistributorDetails() {
+        int selectedRow = statisticsTable.getSelectedRow();
+        if (selectedRow != -1) {
+            DefaultTableModel model = (DefaultTableModel) statisticsTable.getModel();
+            String distributorCode = model.getValueAt(selectedRow, 0).toString();
+            String distributorName = model.getValueAt(selectedRow, 1).toString();
+
+            java.util.Date startDate = (java.util.Date) startDateSpinner.getValue();
+            java.util.Date endDate = (java.util.Date) endDateSpinner.getValue();
+            String startDateStr = new java.text.SimpleDateFormat("yyyy-MM-dd").format(startDate);
+            String endDateStr = new java.text.SimpleDateFormat("yyyy-MM-dd").format(endDate);
+
+            JDialog dialog = new JDialog((JFrame) SwingUtilities.getWindowAncestor(this), 
+                "Chi tiết đại lý: " + distributorName, false);
+
+            JPanel panel = new JPanel(new BorderLayout());
+
+            // Bảng chi tiết phiếu xuất
+            String[] columns = {"Số phiếu", "Ngày xuất", "Số mặt hàng", "Tổng tiền"};
+            DefaultTableModel detailModel = new DefaultTableModel(columns, 0) {
+                @Override
+                public boolean isCellEditable(int row, int column) {
+                    return false;
+                }
+            };
+            JTable detailTable = new JTable(detailModel);
+
+            try {
+                // Lấy chi tiết
+                // Note: Cần lấy ID từ backend hoặc sửa lại API
+                List<ExportReceipt> exports = APIClient.getDistributorExportDetails(distributorCode, startDateStr, endDateStr);
+                for (ExportReceipt receipt : exports) {
+                    detailModel.addRow(new Object[]{
+                        receipt.getReceiptNumber(),
+                        receipt.getExportDate(),
+                        receipt.getItemCount(),
+                        String.format("%.2f VNĐ", receipt.getTotalAmount())
+                    });
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(dialog, "Lỗi: " + ex.getMessage(), "Lỗi", JOptionPane.ERROR_MESSAGE);
+            }
+
+            JScrollPane scrollPane = new JScrollPane(detailTable);
+            panel.add(scrollPane, BorderLayout.CENTER);
+
+            dialog.add(panel);
+            dialog.setSize(700, 400);
+            dialog.setLocationRelativeTo(this);
+            dialog.setVisible(true);
+        }
+    }
+}
